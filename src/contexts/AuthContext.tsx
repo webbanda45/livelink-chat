@@ -125,29 +125,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signUp = async (email: string, password: string, username: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    const newUserData = {
-      email,
-      username: username.toLowerCase(),
-      nickname: username,
-      createdAt: serverTimestamp(),
-    };
+    try {
+      const newUserData = {
+        email,
+        username: username.toLowerCase(),
+        nickname: username,
+        createdAt: serverTimestamp(),
+      };
 
-    await setDoc(doc(db, 'users', userCredential.user.uid), newUserData);
-    
-    // Also create a username lookup entry
-    await setDoc(doc(db, 'usernames', username.toLowerCase()), {
-      odId: userCredential.user.uid,
-    });
+      await setDoc(doc(db, 'users', userCredential.user.uid), newUserData);
+      
+      // Also create a username lookup entry
+      await setDoc(doc(db, 'usernames', username.toLowerCase()), {
+        odId: userCredential.user.uid,
+      });
 
-    setUser({
-      id: userCredential.user.uid,
-      email,
-      username: username.toLowerCase(),
-      nickname: username,
-      createdAt: new Date(),
-    });
-    
-    setupPresence(userCredential.user.uid);
+      setUser({
+        id: userCredential.user.uid,
+        email,
+        username: username.toLowerCase(),
+        nickname: username,
+        createdAt: new Date(),
+      });
+      
+      try {
+        setupPresence(userCredential.user.uid);
+      } catch (presenceError) {
+        console.error('Presence setup failed:', presenceError);
+      }
+    } catch (firestoreError) {
+      console.error('Firestore write failed:', firestoreError);
+      // Still set user since auth succeeded - profile will be created on next sign in
+      setUser({
+        id: userCredential.user.uid,
+        email,
+        username: username.toLowerCase(),
+        nickname: username,
+        createdAt: new Date(),
+      });
+      throw new Error('Account created but profile setup failed. Please check Firestore rules.');
+    }
   };
 
   const signInWithGoogle = async () => {
