@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChatItem } from '@/pages/Chat';
+import { ChatWithDetails } from '@/hooks/useChat';
+import { useFriendRequests } from '@/hooks/useChat';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -13,6 +14,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Badge } from '@/components/ui/badge';
 import {
   Flame,
   Search,
@@ -23,22 +25,30 @@ import {
   LogOut,
   Plus,
   MoreVertical,
+  Bell,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ChatSidebarProps {
-  chats: ChatItem[];
-  selectedChat: ChatItem | null;
-  onSelectChat: (chat: ChatItem) => void;
+  chats: ChatWithDetails[];
+  selectedChat: ChatWithDetails | null;
+  onSelectChat: (chat: ChatWithDetails) => void;
+  onAddFriend: () => void;
+  onCreateGroup: () => void;
+  onViewRequests: () => void;
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
   chats,
   selectedChat,
   onSelectChat,
+  onAddFriend,
+  onCreateGroup,
+  onViewRequests,
 }) => {
   const { user, signOut } = useAuth();
+  const { requests } = useFriendRequests();
   const [searchQuery, setSearchQuery] = useState('');
 
   const dmChats = chats.filter((c) => c.type === 'dm');
@@ -60,7 +70,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       .slice(0, 2);
   };
 
-  const ChatListItem = ({ chat }: { chat: ChatItem }) => (
+  const ChatListItem = ({ chat }: { chat: ChatWithDetails }) => (
     <button
       onClick={() => onSelectChat(chat)}
       className={cn(
@@ -121,32 +131,49 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
             <span className="font-bold text-lg">fyreChat</span>
           </div>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
-                <MoreVertical className="h-4 w-4" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem>
-                <UserPlus className="mr-2 h-4 w-4" />
-                Add Friend
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Plus className="mr-2 h-4 w-4" />
-                Create Group
-              </DropdownMenuItem>
-              <DropdownMenuItem>
-                <Settings className="mr-2 h-4 w-4" />
-                Settings
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={signOut} className="text-destructive">
-                <LogOut className="mr-2 h-4 w-4" />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <div className="flex items-center gap-1">
+            {/* Friend Requests Badge */}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 relative"
+              onClick={onViewRequests}
+            >
+              <Bell className="h-4 w-4" />
+              {requests.length > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px]">
+                  {requests.length}
+                </Badge>
+              )}
+            </Button>
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="h-8 w-8">
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={onAddFriend}>
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Add Friend
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={onCreateGroup}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Create Group
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Settings className="mr-2 h-4 w-4" />
+                  Settings
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={signOut} className="text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </div>
 
         {/* Search */}
@@ -184,7 +211,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <TabsContent value="chats" className="m-0 p-2">
             {filteredDms.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No direct messages yet
+                <p>No direct messages yet</p>
+                <Button variant="link" size="sm" onClick={onAddFriend} className="mt-2">
+                  Add a friend to start chatting
+                </Button>
               </div>
             ) : (
               <div className="space-y-1">
@@ -198,7 +228,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           <TabsContent value="groups" className="m-0 p-2">
             {filteredGroups.length === 0 ? (
               <div className="text-center py-8 text-muted-foreground text-sm">
-                No groups yet
+                <p>No groups yet</p>
+                <Button variant="link" size="sm" onClick={onCreateGroup} className="mt-2">
+                  Create a group
+                </Button>
               </div>
             ) : (
               <div className="space-y-1">

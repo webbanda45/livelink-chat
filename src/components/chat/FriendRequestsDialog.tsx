@@ -1,0 +1,78 @@
+import React from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { useToast } from '@/hooks/use-toast';
+import { useFriendRequests, useStartDMChat } from '@/hooks/useChat';
+import { acceptFriendRequest, rejectFriendRequest } from '@/services/chatService';
+import { useAuth } from '@/contexts/AuthContext';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Check, X, Bell } from 'lucide-react';
+
+interface FriendRequestsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}
+
+const FriendRequestsDialog: React.FC<FriendRequestsDialogProps> = ({ open, onOpenChange }) => {
+  const { user } = useAuth();
+  const { requests } = useFriendRequests();
+  const { startChat } = useStartDMChat();
+  const { toast } = useToast();
+
+  const handleAccept = async (requestId: string, senderId: string) => {
+    if (!user) return;
+    try {
+      await acceptFriendRequest(requestId, user.id, senderId);
+      await startChat(senderId);
+      toast({ title: 'Friend request accepted!' });
+    } catch (error) {
+      toast({ title: 'Failed to accept request', variant: 'destructive' });
+    }
+  };
+
+  const handleReject = async (requestId: string) => {
+    try {
+      await rejectFriendRequest(requestId);
+      toast({ title: 'Request rejected' });
+    } catch (error) {
+      toast({ title: 'Failed to reject request', variant: 'destructive' });
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" /> Friend Requests
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 max-h-64 overflow-y-auto">
+          {requests.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">No pending requests</p>
+          ) : (
+            requests.map((req) => (
+              <div key={req.id} className="flex items-center gap-3 p-2 rounded-lg bg-accent/50">
+                <Avatar className="h-10 w-10">
+                  <AvatarFallback>{req.senderNickname[0]}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                  <p className="font-medium text-sm">{req.senderNickname}</p>
+                  <p className="text-xs text-muted-foreground">@{req.senderUsername}</p>
+                </div>
+                <Button size="icon" variant="ghost" onClick={() => handleAccept(req.id, req.senderId)}>
+                  <Check className="h-4 w-4 text-green-500" />
+                </Button>
+                <Button size="icon" variant="ghost" onClick={() => handleReject(req.id)}>
+                  <X className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
+export default FriendRequestsDialog;

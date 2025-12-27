@@ -1,66 +1,32 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import ChatSidebar from '@/components/chat/ChatSidebar';
 import ChatWindow from '@/components/chat/ChatWindow';
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import AddFriendDialog from '@/components/chat/AddFriendDialog';
+import CreateGroupDialog from '@/components/chat/CreateGroupDialog';
+import FriendRequestsDialog from '@/components/chat/FriendRequestsDialog';
+import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
-
-export interface ChatItem {
-  id: string;
-  type: 'dm' | 'group';
-  name: string;
-  avatar?: string;
-  lastMessage?: string;
-  lastMessageTime?: Date;
-  unreadCount?: number;
-  isOnline?: boolean;
-  members?: string[];
-}
+import { useChats, ChatWithDetails } from '@/hooks/useChat';
 
 const Chat: React.FC = () => {
   const { user, isLoading } = useAuth();
-  const [selectedChat, setSelectedChat] = useState<ChatItem | null>(null);
+  const { chats, loading: chatsLoading } = useChats();
+  const [selectedChat, setSelectedChat] = useState<ChatWithDetails | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(false);
 
-  // Mock chat data
-  const [chats] = useState<ChatItem[]>([
-    {
-      id: '1',
-      type: 'dm',
-      name: 'John Doe',
-      lastMessage: 'Hey, how are you?',
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 5),
-      unreadCount: 2,
-      isOnline: true,
-    },
-    {
-      id: '2',
-      type: 'dm',
-      name: 'Jane Smith',
-      lastMessage: 'See you tomorrow!',
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 60),
-      isOnline: false,
-    },
-    {
-      id: '3',
-      type: 'group',
-      name: 'Dev Team',
-      lastMessage: 'Meeting at 3 PM',
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 30),
-      unreadCount: 5,
-      members: ['John', 'Jane', 'Bob'],
-    },
-    {
-      id: '4',
-      type: 'group',
-      name: 'Project Alpha',
-      lastMessage: 'New updates pushed',
-      lastMessageTime: new Date(Date.now() - 1000 * 60 * 120),
-      members: ['Alice', 'Charlie'],
-    },
-  ]);
+  // Update selected chat when chats update
+  useEffect(() => {
+    if (selectedChat) {
+      const updated = chats.find(c => c.id === selectedChat.id);
+      if (updated) setSelectedChat(updated);
+    }
+  }, [chats, selectedChat?.id]);
 
   if (isLoading) {
     return (
@@ -74,7 +40,7 @@ const Chat: React.FC = () => {
     return <Navigate to="/" replace />;
   }
 
-  const handleSelectChat = (chat: ChatItem) => {
+  const handleSelectChat = (chat: ChatWithDetails) => {
     setSelectedChat(chat);
     setSidebarOpen(false);
   };
@@ -87,6 +53,9 @@ const Chat: React.FC = () => {
           chats={chats}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
+          onAddFriend={() => setAddFriendOpen(true)}
+          onCreateGroup={() => setCreateGroupOpen(true)}
+          onViewRequests={() => setRequestsOpen(true)}
         />
       </div>
 
@@ -97,6 +66,9 @@ const Chat: React.FC = () => {
             chats={chats}
             selectedChat={selectedChat}
             onSelectChat={handleSelectChat}
+            onAddFriend={() => setAddFriendOpen(true)}
+            onCreateGroup={() => setCreateGroupOpen(true)}
+            onViewRequests={() => setRequestsOpen(true)}
           />
         </SheetContent>
       </Sheet>
@@ -119,6 +91,11 @@ const Chat: React.FC = () => {
 
         <ChatWindow chat={selectedChat} />
       </div>
+
+      {/* Dialogs */}
+      <AddFriendDialog open={addFriendOpen} onOpenChange={setAddFriendOpen} />
+      <CreateGroupDialog open={createGroupOpen} onOpenChange={setCreateGroupOpen} />
+      <FriendRequestsDialog open={requestsOpen} onOpenChange={setRequestsOpen} />
     </div>
   );
 };
