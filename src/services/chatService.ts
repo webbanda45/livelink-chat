@@ -272,14 +272,54 @@ export const sendMessage = async (
     status: 'sent',
   });
 
-  // Update chat's last message
-  await updateDoc(doc(db, 'chats', chatId), {
-    lastMessage: content,
-    lastMessageTime: serverTimestamp(),
-    lastMessageSenderId: senderId,
-  });
+  // Update chat's last message and increment unread count for other participants
+  const chatDoc = await getDoc(doc(db, 'chats', chatId));
+  if (chatDoc.exists()) {
+    const chatData = chatDoc.data();
+    const unreadCounts = chatData.unreadCounts || {};
+    
+    // Increment unread count for all participants except sender
+    chatData.participants.forEach((participantId: string) => {
+      if (participantId !== senderId) {
+        unreadCounts[participantId] = (unreadCounts[participantId] || 0) + 1;
+      }
+    });
+
+    await updateDoc(doc(db, 'chats', chatId), {
+      lastMessage: content,
+      lastMessageTime: serverTimestamp(),
+      lastMessageSenderId: senderId,
+      unreadCounts,
+    });
+  }
 
   return messageRef.id;
+};
+
+export const clearUnreadCount = async (chatId: string, userId: string) => {
+  const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+  
+  if (chatDoc.exists()) {
+    const unreadCounts = chatDoc.data().unreadCounts || {};
+    unreadCounts[userId] = 0;
+    await updateDoc(chatRef, { unreadCounts });
+  }
+};
+
+export const clearChat = async (chatId: string) => {
+  // Delete all messages in the chat
+  const messagesRef = collection(db, 'chats', chatId, 'messages');
+  const snapshot = await getDocs(messagesRef);
+  
+  const deletePromises = snapshot.docs.map((doc) => deleteDoc(doc.ref));
+  await Promise.all(deletePromises);
+  
+  // Update chat to clear last message
+  await updateDoc(doc(db, 'chats', chatId), {
+    lastMessage: null,
+    lastMessageSenderId: null,
+  });
 };
 
 export const subscribeToMessages = (
