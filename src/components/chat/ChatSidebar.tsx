@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { ChatWithDetails } from '@/hooks/useChat';
+import { ChatWithDetails, useFriends } from '@/hooks/useChat';
 import { useFriendRequests } from '@/hooks/useChat';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,6 +30,7 @@ import {
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
 import OnlineStatusBadge from './OnlineStatusBadge';
+import { getOrCreateDMChat } from '@/services/chatService';
 
 interface ChatSidebarProps {
   chats: ChatWithDetails[];
@@ -52,11 +53,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
 }) => {
   const { user, signOut } = useAuth();
   const { requests } = useFriendRequests();
+  const { friends } = useFriends();
   const [searchQuery, setSearchQuery] = useState('');
 
   const dmChats = chats.filter((c) => c.type === 'dm');
   const groupChats = chats.filter((c) => c.type === 'group');
 
+  // Filter friends based on search query
+  const filteredFriends = friends.filter((f) =>
+    f.nickname.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    f.username.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Filter chats by search
   const filteredDms = dmChats.filter((c) =>
     c.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -76,6 +85,27 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const getOtherUserId = (chat: ChatWithDetails) => {
     if (chat.type !== 'dm' || !user) return null;
     return chat.participants.find((p) => p !== user.id) || null;
+  };
+
+  const handleFriendClick = async (friendId: string) => {
+    if (!user) return;
+    
+    // Check if DM already exists
+    const existingChat = dmChats.find((c) => c.participants.includes(friendId));
+    if (existingChat) {
+      onSelectChat(existingChat);
+      setSearchQuery('');
+      return;
+    }
+    
+    // Create new DM
+    try {
+      const chatId = await getOrCreateDMChat(user.id, friendId);
+      // The chat will appear in the list automatically via subscription
+      setSearchQuery('');
+    } catch (error) {
+      console.error('Failed to create DM:', error);
+    }
   };
 
   const ChatListItem = ({ chat }: { chat: ChatWithDetails }) => {
@@ -130,6 +160,30 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       </button>
     );
   };
+
+  const FriendSearchItem = ({ friend }: { friend: typeof friends[0] }) => (
+    <button
+      onClick={() => handleFriendClick(friend.odId)}
+      className="w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left hover:bg-accent/50"
+    >
+      <div className="relative">
+        <Avatar className="h-10 w-10">
+          <AvatarImage src={friend.avatar} />
+          <AvatarFallback className="bg-primary/10 text-primary text-sm">
+            {getInitials(friend.nickname)}
+          </AvatarFallback>
+        </Avatar>
+        <OnlineStatusBadge userId={friend.odId} size="sm" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="font-medium text-sm truncate">{friend.nickname}</p>
+        <p className="text-xs text-muted-foreground truncate">@{friend.username}</p>
+      </div>
+    </button>
+  );
+
+  // Show friend search results when searching
+  const showFriendSearch = searchQuery.trim().length > 0 && filteredFriends.length > 0;
 
   return (
     <div className="h-screen flex flex-col bg-card">
@@ -192,13 +246,25 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search chats..."
+            placeholder="Search friends..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-9 bg-background/50"
           />
         </div>
       </div>
+
+      {/* Friend Search Results */}
+      {showFriendSearch && (
+        <div className="p-2 border-b border-border">
+          <p className="text-xs text-muted-foreground px-2 mb-2">Friends</p>
+          <div className="space-y-1">
+            {filteredFriends.slice(0, 3).map((friend) => (
+              <FriendSearchItem key={friend.odId} friend={friend} />
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Chat Lists */}
       <Tabs defaultValue="chats" className="flex-1 flex flex-col">
