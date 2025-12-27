@@ -2,29 +2,38 @@ import React from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { useFriendRequests, useStartDMChat } from '@/hooks/useChat';
+import { useFriendRequests } from '@/hooks/useChat';
 import { acceptFriendRequest, rejectFriendRequest } from '@/services/chatService';
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Check, X, Bell } from 'lucide-react';
+import { ChatWithDetails } from '@/hooks/useChat';
 
 interface FriendRequestsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onSelectChat?: (chat: ChatWithDetails) => void;
 }
 
-const FriendRequestsDialog: React.FC<FriendRequestsDialogProps> = ({ open, onOpenChange }) => {
+const FriendRequestsDialog: React.FC<FriendRequestsDialogProps> = ({ 
+  open, 
+  onOpenChange,
+  onSelectChat 
+}) => {
   const { user } = useAuth();
   const { requests } = useFriendRequests();
-  const { startChat } = useStartDMChat();
   const { toast } = useToast();
 
   const handleAccept = async (requestId: string, senderId: string) => {
     if (!user) return;
     try {
-      await acceptFriendRequest(requestId, user.id, senderId);
-      await startChat(senderId);
+      const chatId = await acceptFriendRequest(requestId, user.id, senderId);
       toast({ title: 'Friend request accepted!' });
+      
+      // Close dialog and navigate to the new chat
+      onOpenChange(false);
+      
+      // The chat will appear in the list automatically due to subscription
     } catch (error) {
       toast({ title: 'Failed to accept request', variant: 'destructive' });
     }
