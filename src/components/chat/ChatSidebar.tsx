@@ -57,9 +57,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   const { requests } = useFriendRequests();
   const { friends } = useFriends();
   const [searchQuery, setSearchQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'chats' | 'groups'>('chats');
 
   const dmChats = chats.filter((c) => c.type === 'dm');
   const groupChats = chats.filter((c) => c.type === 'group');
+
+  // Automatically switch tab when selected chat type changes
+  React.useEffect(() => {
+    if (selectedChat?.type === 'group') {
+      setActiveTab('groups');
+    } else if (selectedChat?.type === 'dm') {
+      setActiveTab('chats');
+    }
+  }, [selectedChat?.id, selectedChat?.type]);
 
   // Filter friends based on search query
   const filteredFriends = friends.filter((f) =>
@@ -273,7 +283,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       )}
 
       {/* Chat Lists */}
-      <Tabs defaultValue="chats" className="flex-1 flex flex-col">
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'chats' | 'groups')} className="flex-1 flex flex-col">
         <TabsList className="w-full justify-start rounded-none border-b border-border bg-transparent p-0">
           <TabsTrigger
             value="chats"
