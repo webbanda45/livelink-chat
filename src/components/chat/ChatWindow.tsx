@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChatWithDetails, useMessages, useSendMessage, useTypingIndicator } from '@/hooks/useChat';
+import { ChatWithDetails, useMessages, useSendMessage, useTypingIndicator, usePresence } from '@/hooks/useChat';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,6 +22,10 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
+import OnlineStatusBadge from './OnlineStatusBadge';
+import UserProfileCard from './UserProfileCard';
+import { getUserById } from '@/services/chatService';
+import { UserProfile } from '@/types/chat';
 
 interface ChatWindowProps {
   chat: ChatWithDetails | null;
@@ -34,8 +38,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   const { typingUsers, setTyping } = useTypingIndicator(chat?.id || null);
   const [messageInput, setMessageInput] = useState('');
   const [isSending, setIsSending] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
+
+  // Get the other user's ID for DM chats
+  const otherUserId = chat?.type === 'dm' && user
+    ? chat.participants.find((p) => p !== user.id) || null
+    : null;
+  
+  const isOtherUserOnline = usePresence(otherUserId);
 
   // Scroll to bottom when messages change
   useEffect(() => {
@@ -79,6 +92,18 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
     }
   };
 
+  const handleViewProfile = async (userId: string) => {
+    try {
+      const userProfile = await getUserById(userId);
+      if (userProfile) {
+        setProfileUser(userProfile);
+        setProfileOpen(true);
+      }
+    } catch (error) {
+      console.error('Failed to load profile:', error);
+    }
+  };
+
   const getInitials = (name: string) => {
     return name
       .split(' ')
@@ -106,7 +131,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
     <div className="flex-1 flex flex-col bg-background/50">
       {/* Chat Header */}
       <div className="hidden md:flex items-center justify-between px-6 py-4 border-b border-border bg-card/50">
-        <div className="flex items-center gap-3">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => otherUserId && handleViewProfile(otherUserId)}
+        >
           <div className="relative">
             <Avatar className="h-10 w-10">
               <AvatarImage src={chat.avatar} />
@@ -118,15 +146,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                 )}
               </AvatarFallback>
             </Avatar>
-            {chat.type === 'dm' && chat.isOnline && (
-              <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-card rounded-full" />
+            {chat.type === 'dm' && otherUserId && (
+              <OnlineStatusBadge userId={otherUserId} size="sm" />
             )}
           </div>
           <div>
             <h3 className="font-semibold">{chat.name}</h3>
             <p className="text-xs text-muted-foreground">
               {chat.type === 'dm'
-                ? chat.isOnline
+                ? isOtherUserOnline
                   ? 'Online'
                   : 'Offline'
                 : `${chat.participants?.length || 0} members`}
@@ -148,7 +176,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>View Profile</DropdownMenuItem>
+              {chat.type === 'dm' && otherUserId && (
+                <DropdownMenuItem onClick={() => handleViewProfile(otherUserId)}>
+                  View Profile
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem>Search Messages</DropdownMenuItem>
               <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
               <DropdownMenuItem className="text-destructive">
@@ -177,7 +209,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                   className={cn('flex gap-3', isMe && 'flex-row-reverse')}
                 >
                   {!isMe && (
-                    <Avatar className="h-8 w-8 flex-shrink-0">
+                    <Avatar 
+                      className="h-8 w-8 flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => handleViewProfile(msg.senderId)}
+                    >
                       <AvatarFallback className="bg-primary/10 text-primary text-xs">
                         {getInitials(msg.senderName)}
                       </AvatarFallback>
@@ -192,7 +227,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                     )}
                   >
                     {chat.type === 'group' && !isMe && (
-                      <p className="text-xs font-medium mb-1 opacity-70">
+                      <p 
+                        className="text-xs font-medium mb-1 opacity-70 cursor-pointer hover:underline"
+                        onClick={() => handleViewProfile(msg.senderId)}
+                      >
                         {msg.senderName}
                       </p>
                     )}
@@ -260,6 +298,14 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
           </Button>
         </form>
       </div>
+
+      {/* Profile Card */}
+      <UserProfileCard
+        open={profileOpen}
+        onOpenChange={setProfileOpen}
+        user={profileUser}
+        showEmail={false}
+      />
     </div>
   );
 };

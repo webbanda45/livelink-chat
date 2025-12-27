@@ -39,6 +39,40 @@ export const searchUserByUsername = async (username: string): Promise<UserProfil
   };
 };
 
+export const searchUsersByUsernamePrefix = async (prefix: string, currentUserId: string): Promise<UserProfile[]> => {
+  if (!prefix || prefix.length < 2) return [];
+  
+  const lowercasePrefix = prefix.toLowerCase();
+  const endPrefix = lowercasePrefix.slice(0, -1) + String.fromCharCode(lowercasePrefix.charCodeAt(lowercasePrefix.length - 1) + 1);
+  
+  const q = query(
+    collection(db, 'users'),
+    where('username', '>=', lowercasePrefix),
+    where('username', '<', endPrefix),
+    limit(5)
+  );
+  
+  const snapshot = await getDocs(q);
+  const users: UserProfile[] = [];
+  
+  snapshot.docs.forEach((doc) => {
+    if (doc.id !== currentUserId) {
+      const userData = doc.data();
+      users.push({
+        id: doc.id,
+        email: userData.email,
+        username: userData.username,
+        nickname: userData.nickname,
+        avatar: userData.avatar,
+        bio: userData.bio,
+        createdAt: userData.createdAt?.toDate() || new Date(),
+      });
+    }
+  });
+  
+  return users;
+};
+
 export const getUserById = async (userId: string): Promise<UserProfile | null> => {
   const userDoc = await getDoc(doc(db, 'users', userId));
   if (!userDoc.exists()) return null;
@@ -90,7 +124,9 @@ export const sendFriendRequest = async (senderId: string, receiverId: string) =>
 
 export const acceptFriendRequest = async (requestId: string, userId: string, friendId: string) => {
   const requestRef = doc(db, 'friendRequests', requestId);
-  await updateDoc(requestRef, { status: 'accepted' });
+  
+  // Delete the request instead of updating to accepted
+  await deleteDoc(requestRef);
 
   const [user, friend] = await Promise.all([
     getUserById(userId),
@@ -116,11 +152,14 @@ export const acceptFriendRequest = async (requestId: string, userId: string, fri
       addedAt: serverTimestamp(),
     }),
   ]);
+  
+  // Create DM chat immediately
+  return getOrCreateDMChat(userId, friendId);
 };
 
 export const rejectFriendRequest = async (requestId: string) => {
   const requestRef = doc(db, 'friendRequests', requestId);
-  await updateDoc(requestRef, { status: 'rejected' });
+  await deleteDoc(requestRef);
 };
 
 export const subscribeToPendingRequests = (
@@ -191,6 +230,7 @@ export const getOrCreateDMChat = async (userId1: string, userId2: string): Promi
       [userId2]: { nickname: user2?.nickname || 'Unknown', avatar: user2?.avatar || null },
     },
     createdAt: serverTimestamp(),
+    lastMessageTime: serverTimestamp(),
   });
 
   return chatRef.id;
@@ -292,6 +332,7 @@ export const createGroup = async (
     participants: allMembers,
     participantDetails: memberDetails,
     createdAt: serverTimestamp(),
+    lastMessageTime: serverTimestamp(),
   });
 
   return chatRef.id;

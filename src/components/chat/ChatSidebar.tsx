@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatDistanceToNow } from 'date-fns';
+import OnlineStatusBadge from './OnlineStatusBadge';
 
 interface ChatSidebarProps {
   chats: ChatWithDetails[];
@@ -37,6 +38,7 @@ interface ChatSidebarProps {
   onAddFriend: () => void;
   onCreateGroup: () => void;
   onViewRequests: () => void;
+  onOpenSettings: () => void;
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -46,6 +48,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onAddFriend,
   onCreateGroup,
   onViewRequests,
+  onOpenSettings,
 }) => {
   const { user, signOut } = useAuth();
   const { requests } = useFriendRequests();
@@ -70,54 +73,63 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       .slice(0, 2);
   };
 
-  const ChatListItem = ({ chat }: { chat: ChatWithDetails }) => (
-    <button
-      onClick={() => onSelectChat(chat)}
-      className={cn(
-        'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
-        'hover:bg-accent/50',
-        selectedChat?.id === chat.id && 'bg-accent'
-      )}
-    >
-      <div className="relative">
-        <Avatar className="h-10 w-10">
-          <AvatarImage src={chat.avatar} />
-          <AvatarFallback className="bg-primary/10 text-primary text-sm">
-            {chat.type === 'group' ? (
-              <Users className="h-4 w-4" />
-            ) : (
-              getInitials(chat.name)
-            )}
-          </AvatarFallback>
-        </Avatar>
-        {chat.type === 'dm' && chat.isOnline && (
-          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-background rounded-full" />
-        )}
-      </div>
+  const getOtherUserId = (chat: ChatWithDetails) => {
+    if (chat.type !== 'dm' || !user) return null;
+    return chat.participants.find((p) => p !== user.id) || null;
+  };
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between">
-          <span className="font-medium text-sm truncate">{chat.name}</span>
-          {chat.lastMessageTime && (
-            <span className="text-xs text-muted-foreground">
-              {formatDistanceToNow(chat.lastMessageTime, { addSuffix: false })}
-            </span>
+  const ChatListItem = ({ chat }: { chat: ChatWithDetails }) => {
+    const otherUserId = getOtherUserId(chat);
+    
+    return (
+      <button
+        onClick={() => onSelectChat(chat)}
+        className={cn(
+          'w-full flex items-center gap-3 p-3 rounded-lg transition-colors text-left',
+          'hover:bg-accent/50',
+          selectedChat?.id === chat.id && 'bg-accent'
+        )}
+      >
+        <div className="relative">
+          <Avatar className="h-10 w-10">
+            <AvatarImage src={chat.avatar} />
+            <AvatarFallback className="bg-primary/10 text-primary text-sm">
+              {chat.type === 'group' ? (
+                <Users className="h-4 w-4" />
+              ) : (
+                getInitials(chat.name)
+              )}
+            </AvatarFallback>
+          </Avatar>
+          {chat.type === 'dm' && otherUserId && (
+            <OnlineStatusBadge userId={otherUserId} size="sm" />
           )}
         </div>
-        {chat.lastMessage && (
-          <p className="text-xs text-muted-foreground truncate mt-0.5">
-            {chat.lastMessage}
-          </p>
-        )}
-      </div>
 
-      {chat.unreadCount && chat.unreadCount > 0 && (
-        <span className="flex-shrink-0 w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
-          {chat.unreadCount}
-        </span>
-      )}
-    </button>
-  );
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <span className="font-medium text-sm truncate">{chat.name}</span>
+            {chat.lastMessageTime && (
+              <span className="text-xs text-muted-foreground">
+                {formatDistanceToNow(chat.lastMessageTime, { addSuffix: false })}
+              </span>
+            )}
+          </div>
+          {chat.lastMessage && (
+            <p className="text-xs text-muted-foreground truncate mt-0.5">
+              {chat.lastMessage}
+            </p>
+          )}
+        </div>
+
+        {chat.unreadCount && chat.unreadCount > 0 && (
+          <span className="flex-shrink-0 w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
+            {chat.unreadCount}
+          </span>
+        )}
+      </button>
+    );
+  };
 
   return (
     <div className="h-screen flex flex-col bg-card">
@@ -162,7 +174,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
                   <Plus className="mr-2 h-4 w-4" />
                   Create Group
                 </DropdownMenuItem>
-                <DropdownMenuItem>
+                <DropdownMenuItem onClick={onOpenSettings}>
                   <Settings className="mr-2 h-4 w-4" />
                   Settings
                 </DropdownMenuItem>
@@ -245,7 +257,10 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       </Tabs>
 
       {/* User Profile Footer */}
-      <div className="p-3 border-t border-border">
+      <div 
+        className="p-3 border-t border-border cursor-pointer hover:bg-accent/30 transition-colors"
+        onClick={onOpenSettings}
+      >
         <div className="flex items-center gap-3">
           <div className="relative">
             <Avatar className="h-9 w-9">

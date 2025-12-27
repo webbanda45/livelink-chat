@@ -6,6 +6,7 @@ import ChatWindow from '@/components/chat/ChatWindow';
 import AddFriendDialog from '@/components/chat/AddFriendDialog';
 import CreateGroupDialog from '@/components/chat/CreateGroupDialog';
 import FriendRequestsDialog from '@/components/chat/FriendRequestsDialog';
+import UserProfileCard from '@/components/chat/UserProfileCard';
 import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
@@ -19,6 +20,7 @@ const Chat: React.FC = () => {
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // Update selected chat when chats update
   useEffect(() => {
@@ -56,6 +58,7 @@ const Chat: React.FC = () => {
           onAddFriend={() => setAddFriendOpen(true)}
           onCreateGroup={() => setCreateGroupOpen(true)}
           onViewRequests={() => setRequestsOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       </div>
 
@@ -69,6 +72,7 @@ const Chat: React.FC = () => {
             onAddFriend={() => setAddFriendOpen(true)}
             onCreateGroup={() => setCreateGroupOpen(true)}
             onViewRequests={() => setRequestsOpen(true)}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         </SheetContent>
       </Sheet>
@@ -95,7 +99,17 @@ const Chat: React.FC = () => {
       {/* Dialogs */}
       <AddFriendDialog open={addFriendOpen} onOpenChange={setAddFriendOpen} />
       <CreateGroupDialog open={createGroupOpen} onOpenChange={setCreateGroupOpen} />
-      <FriendRequestsDialog open={requestsOpen} onOpenChange={setRequestsOpen} />
+      <FriendRequestsDialog 
+        open={requestsOpen} 
+        onOpenChange={setRequestsOpen}
+        onSelectChat={handleSelectChat}
+      />
+      <UserProfileCard
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        user={user}
+        showEmail={true}
+      />
     </div>
   );
 };
