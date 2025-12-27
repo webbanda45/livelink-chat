@@ -158,7 +158,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
           )}
         </div>
 
-        {chat.unreadCount && chat.unreadCount > 0 && (
+        {selectedChat?.id !== chat.id && chat.unreadCount && chat.unreadCount > 0 && (
           <span className="flex-shrink-0 w-5 h-5 bg-primary text-primary-foreground text-xs rounded-full flex items-center justify-center">
             {chat.unreadCount}
           </span>
