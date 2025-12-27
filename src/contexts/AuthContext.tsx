@@ -141,7 +141,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     setUser({
       id: userCredential.user.uid,
-      ...newUser,
+      email,
+      username: username.toLowerCase(),
+      nickname: username,
       createdAt: new Date(),
     });
     
