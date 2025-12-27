@@ -192,13 +192,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   const signOut = async () => {
-    if (firebaseUser) {
-      // Set offline status before signing out
-      const userStatusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
-      await set(userStatusRef, {
-        state: 'offline',
-        lastChanged: rtdbServerTimestamp(),
-      });
+    try {
+      if (firebaseUser) {
+        // Set offline status before signing out
+        const userStatusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
+        await set(userStatusRef, {
+          state: 'offline',
+          lastChanged: rtdbServerTimestamp(),
+        });
+      }
+    } catch (error) {
+      console.error('Error setting offline status:', error);
     }
     
     await firebaseSignOut(auth);
