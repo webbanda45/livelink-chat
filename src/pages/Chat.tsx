@@ -24,6 +24,7 @@ const Chat: React.FC = () => {
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const prevChatsRef = useRef<ChatWithDetails[]>([]);
+  const pendingChatIdRef = useRef<string | null>(null);
 
   // Request notification permission on mount
   useEffect(() => {
@@ -35,6 +36,16 @@ const Chat: React.FC = () => {
     if (selectedChat) {
       const updated = chats.find(c => c.id === selectedChat.id);
       if (updated) setSelectedChat(updated);
+    }
+
+    // Check for pending chat selection
+    if (pendingChatIdRef.current) {
+      const pendingChat = chats.find(c => c.id === pendingChatIdRef.current);
+      if (pendingChat) {
+        setSelectedChat(pendingChat);
+        setSidebarOpen(false);
+        pendingChatIdRef.current = null;
+      }
     }
 
     // Check for new messages (unread count increased)
@@ -76,6 +87,18 @@ const Chat: React.FC = () => {
     setSidebarOpen(false);
   };
 
+  const handleSelectChatById = (chatId: string) => {
+    // Try to find immediately
+    const found = chats.find(c => c.id === chatId);
+    if (found) {
+      setSelectedChat(found);
+      setSidebarOpen(false);
+    } else {
+      // Set pending chat ID - will be picked up when chats update
+      pendingChatIdRef.current = chatId;
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background flex">
       {/* Desktop Sidebar */}
@@ -84,6 +107,7 @@ const Chat: React.FC = () => {
           chats={chats}
           selectedChat={selectedChat}
           onSelectChat={handleSelectChat}
+          onSelectChatById={handleSelectChatById}
           onAddFriend={() => setAddFriendOpen(true)}
           onCreateGroup={() => setCreateGroupOpen(true)}
           onViewRequests={() => setRequestsOpen(true)}
@@ -98,6 +122,7 @@ const Chat: React.FC = () => {
             chats={chats}
             selectedChat={selectedChat}
             onSelectChat={handleSelectChat}
+            onSelectChatById={handleSelectChatById}
             onAddFriend={() => setAddFriendOpen(true)}
             onCreateGroup={() => setCreateGroupOpen(true)}
             onViewRequests={() => setRequestsOpen(true)}
@@ -127,11 +152,15 @@ const Chat: React.FC = () => {
 
       {/* Dialogs */}
       <AddFriendDialog open={addFriendOpen} onOpenChange={setAddFriendOpen} />
-      <CreateGroupDialog open={createGroupOpen} onOpenChange={setCreateGroupOpen} />
+      <CreateGroupDialog 
+        open={createGroupOpen} 
+        onOpenChange={setCreateGroupOpen}
+        onGroupCreated={handleSelectChatById}
+      />
       <FriendRequestsDialog 
         open={requestsOpen} 
         onOpenChange={setRequestsOpen}
-        onSelectChat={handleSelectChat}
+        onSelectChatById={handleSelectChatById}
       />
       <UserProfileCard
         open={settingsOpen}

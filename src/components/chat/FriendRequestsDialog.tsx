@@ -7,18 +7,18 @@ import { acceptFriendRequest, rejectFriendRequest } from '@/services/chatService
 import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Check, X, Bell, Loader2 } from 'lucide-react';
-import { ChatWithDetails } from '@/hooks/useChat';
+
 
 interface FriendRequestsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSelectChat?: (chat: ChatWithDetails) => void;
+  onSelectChatById?: (chatId: string) => void;
 }
 
 const FriendRequestsDialog: React.FC<FriendRequestsDialogProps> = ({ 
   open, 
   onOpenChange,
-  onSelectChat 
+  onSelectChatById
 }) => {
   const { user } = useAuth();
   const { requests } = useFriendRequests();
@@ -31,9 +31,14 @@ const FriendRequestsDialog: React.FC<FriendRequestsDialogProps> = ({
     setProcessingIds(prev => new Set(prev).add(requestId));
     
     try {
-      await acceptFriendRequest(requestId, user.id, senderId);
+      const chatId = await acceptFriendRequest(requestId, user.id, senderId);
       toast({ title: 'Friend request accepted!' });
       onOpenChange(false);
+      
+      // Select the newly created DM chat
+      if (onSelectChatById && chatId) {
+        onSelectChatById(chatId);
+      }
     } catch (error) {
       toast({ title: 'Failed to accept request', variant: 'destructive' });
       setProcessingIds(prev => {

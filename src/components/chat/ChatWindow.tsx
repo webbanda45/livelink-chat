@@ -71,9 +71,17 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   // Clear unread count when viewing a chat
   useEffect(() => {
     if (chat?.id && user?.id) {
-      clearUnreadCount(chat.id, user.id);
+      // Clear immediately when chat is selected
+      clearUnreadCount(chat.id, user.id).catch(console.error);
     }
   }, [chat?.id, user?.id]);
+
+  // Also clear when new messages come in while chat is open
+  useEffect(() => {
+    if (chat?.id && user?.id && messages.length > 0) {
+      clearUnreadCount(chat.id, user.id).catch(console.error);
+    }
+  }, [chat?.id, user?.id, messages.length]);
 
   // Scroll to bottom when messages change
   useEffect(() => {
