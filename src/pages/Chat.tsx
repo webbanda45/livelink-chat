@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { useChats, ChatWithDetails } from '@/hooks/useChat';
 import { useNotifications } from '@/hooks/useNotifications';
+import { clearUnreadCount } from '@/services/chatService';
 
 const Chat: React.FC = () => {
   const { user, isLoading } = useAuth();
@@ -42,7 +43,10 @@ const Chat: React.FC = () => {
     if (pendingChatIdRef.current) {
       const pendingChat = chats.find(c => c.id === pendingChatIdRef.current);
       if (pendingChat) {
-        setSelectedChat(pendingChat);
+        setSelectedChat({ ...pendingChat, unreadCount: 0 });
+        if (user?.id) {
+          clearUnreadCount(pendingChat.id, user.id).catch(console.error);
+        }
         setSidebarOpen(false);
         pendingChatIdRef.current = null;
       }
@@ -83,7 +87,10 @@ const Chat: React.FC = () => {
   }
 
   const handleSelectChat = (chat: ChatWithDetails) => {
-    setSelectedChat(chat);
+    setSelectedChat({ ...chat, unreadCount: 0 });
+    if (user?.id) {
+      clearUnreadCount(chat.id, user.id).catch(console.error);
+    }
     setSidebarOpen(false);
   };
 
@@ -91,7 +98,10 @@ const Chat: React.FC = () => {
     // Try to find immediately
     const found = chats.find(c => c.id === chatId);
     if (found) {
-      setSelectedChat(found);
+      setSelectedChat({ ...found, unreadCount: 0 });
+      if (user?.id) {
+        clearUnreadCount(found.id, user.id).catch(console.error);
+      }
       setSidebarOpen(false);
     } else {
       // Set pending chat ID - will be picked up when chats update

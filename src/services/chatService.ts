@@ -352,19 +352,27 @@ export const createGroup = async (
   adminId: string,
   memberIds: string[]
 ) => {
-  const allMembers = [adminId, ...memberIds.filter((id) => id !== adminId)];
-  
-  const memberDetails: Record<string, { nickname: string; avatar: string | null }> = {};
-  for (const memberId of allMembers) {
-    const user = await getUserById(memberId);
-    if (user) {
-      memberDetails[memberId] = { nickname: user.nickname, avatar: user.avatar || null };
-    }
+  const allMembers = Array.from(
+    new Set([adminId, ...(memberIds || [])])
+  ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+
+  if (allMembers.length < 2) {
+    throw new Error('Select at least 1 friend to create a group');
   }
+
+  const profiles = await Promise.all(allMembers.map((memberId) => getUserById(memberId)));
+  const memberDetails: Record<string, { nickname: string; avatar: string | null }> = {};
+
+  profiles.forEach((profile, idx) => {
+    const memberId = allMembers[idx];
+    if (profile) {
+      memberDetails[memberId] = { nickname: profile.nickname, avatar: profile.avatar || null };
+    }
+  });
 
   const chatRef = await addDoc(collection(db, 'chats'), {
     type: 'group',
-    name,
+    name: name.trim(),
     adminId,
     participants: allMembers,
     participantDetails: memberDetails,

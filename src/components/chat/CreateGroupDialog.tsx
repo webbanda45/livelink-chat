@@ -40,17 +40,28 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
 
   const handleCreateGroup = async () => {
     if (!user || !groupName.trim() || selectedFriends.length === 0) return;
+
+    const cleanedMemberIds = Array.from(
+      new Set(selectedFriends.filter((id) => typeof id === 'string' && id.trim().length > 0))
+    ).filter((id) => id !== user.id);
+
+    if (cleanedMemberIds.length === 0) {
+      toast({ title: 'Select at least 1 friend', variant: 'destructive' });
+      return;
+    }
     
     setCreating(true);
     try {
-      const chatId = await createGroup(groupName.trim(), user.id, selectedFriends);
+      const chatId = await createGroup(groupName.trim(), user.id, cleanedMemberIds);
       toast({ title: 'Group created successfully!' });
       onOpenChange(false);
       setGroupName('');
       setSelectedFriends([]);
       onGroupCreated?.(chatId);
     } catch (error) {
-      toast({ title: 'Failed to create group', variant: 'destructive' });
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      console.error('Failed to create group:', error);
+      toast({ title: 'Failed to create group', description: message, variant: 'destructive' });
     } finally {
       setCreating(false);
     }
@@ -112,6 +123,7 @@ const CreateGroupDialog: React.FC<CreateGroupDialogProps> = ({
                     >
                       <Checkbox
                         checked={selectedFriends.includes(friend.odId)}
+                        onClick={(e) => e.stopPropagation()}
                         onCheckedChange={() => handleToggleFriend(friend.odId)}
                       />
                       <Avatar className="h-8 w-8">
