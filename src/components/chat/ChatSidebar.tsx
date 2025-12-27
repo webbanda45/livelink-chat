@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { ChatWithDetails, useFriends } from '@/hooks/useChat';
 import { useFriendRequests } from '@/hooks/useChat';
@@ -40,6 +40,7 @@ interface ChatSidebarProps {
   onCreateGroup: () => void;
   onViewRequests: () => void;
   onOpenSettings: () => void;
+  onSelectChatById?: (chatId: string) => void;
 }
 
 const ChatSidebar: React.FC<ChatSidebarProps> = ({
@@ -50,6 +51,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
   onCreateGroup,
   onViewRequests,
   onOpenSettings,
+  onSelectChatById,
 }) => {
   const { user, signOut } = useAuth();
   const { requests } = useFriendRequests();
@@ -87,7 +89,7 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
     return chat.participants.find((p) => p !== user.id) || null;
   };
 
-  const handleFriendClick = async (friendId: string) => {
+  const handleFriendClick = useCallback(async (friendId: string) => {
     if (!user) return;
     
     // Check if DM already exists
@@ -98,22 +100,19 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       return;
     }
     
-    // Create new DM and wait for it to appear in chats
+    // Create new DM
     try {
       const chatId = await getOrCreateDMChat(user.id, friendId);
       setSearchQuery('');
       
-      // Wait a bit for the subscription to update, then select the new chat
-      setTimeout(() => {
-        const newChat = chats.find((c) => c.id === chatId);
-        if (newChat) {
-          onSelectChat(newChat);
-        }
-      }, 500);
+      // Immediately try to find the chat, or use callback to select by ID
+      if (onSelectChatById) {
+        onSelectChatById(chatId);
+      }
     } catch (error) {
       console.error('Failed to create DM:', error);
     }
-  };
+  }, [user, dmChats, onSelectChat, onSelectChatById]);
 
   const ChatListItem = ({ chat }: { chat: ChatWithDetails }) => {
     const otherUserId = getOtherUserId(chat);
