@@ -1,24 +1,32 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-export interface User {
-  id: string;
-  email: string;
-  username: string;
-  nickname: string;
-  avatar?: string;
-  bio?: string;
-  status: 'online' | 'offline';
-  createdAt: Date;
-}
+import {
+  User as FirebaseUser,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+  signOut as firebaseSignOut,
+  onAuthStateChanged,
+} from 'firebase/auth';
+import {
+  doc,
+  setDoc,
+  getDoc,
+  updateDoc,
+  serverTimestamp,
+} from 'firebase/firestore';
+import { ref, set, onDisconnect, onValue, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { auth, db, rtdb, googleProvider } from '@/lib/firebase';
+import { UserProfile } from '@/types/chat';
 
 interface AuthContextType {
-  user: User | null;
+  user: UserProfile | null;
+  firebaseUser: FirebaseUser | null;
   isLoading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, username: string) => Promise<void>;
   signInWithGoogle: () => Promise<void>;
-  signOut: () => void;
-  updateProfile: (updates: Partial<User>) => void;
+  signOut: () => Promise<void>;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -36,105 +44,183 @@ interface AuthProviderProps {
 }
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Set up presence system
+  const setupPresence = (uid: string) => {
+    const userStatusRef = ref(rtdb, `/status/${uid}`);
+    const connectedRef = ref(rtdb, '.info/connected');
+
+    onValue(connectedRef, (snapshot) => {
+      if (snapshot.val() === true) {
+        // User is online
+        set(userStatusRef, {
+          state: 'online',
+          lastChanged: rtdbServerTimestamp(),
+        });
+
+        // Set offline status on disconnect
+        onDisconnect(userStatusRef).set({
+          state: 'offline',
+          lastChanged: rtdbServerTimestamp(),
+        });
+      }
+    });
+  };
+
   useEffect(() => {
-    // Check for stored user on mount
-    const storedUser = localStorage.getItem('fyrechat_user');
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser({ ...parsedUser, status: 'online' });
-    }
-    setIsLoading(false);
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      setFirebaseUser(firebaseUser);
+      
+      if (firebaseUser) {
+        try {
+          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            setUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              username: userData.username,
+              nickname: userData.nickname,
+              avatar: userData.avatar,
+              bio: userData.bio,
+              createdAt: userData.createdAt?.toDate() || new Date(),
+            });
+            setupPresence(firebaseUser.uid);
+          }
+        } catch (error) {
+          console.error('Error fetching user data:', error);
+        }
+      } else {
+        setUser(null);
+      }
+      
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    // Mock sign in - in production, this would validate against backend
-    const storedUsers = JSON.parse(localStorage.getItem('fyrechat_users') || '[]');
-    const existingUser = storedUsers.find((u: User) => u.email === email);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
     
-    if (existingUser) {
-      const loggedInUser = { ...existingUser, status: 'online' as const };
-      setUser(loggedInUser);
-      localStorage.setItem('fyrechat_user', JSON.stringify(loggedInUser));
-    } else {
-      throw new Error('Invalid credentials');
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      setUser({
+        id: userCredential.user.uid,
+        email: userCredential.user.email || '',
+        username: userData.username,
+        nickname: userData.nickname,
+        avatar: userData.avatar,
+        bio: userData.bio,
+        createdAt: userData.createdAt?.toDate() || new Date(),
+      });
+      setupPresence(userCredential.user.uid);
     }
   };
 
   const signUp = async (email: string, password: string, username: string) => {
-    const storedUsers = JSON.parse(localStorage.getItem('fyrechat_users') || '[]');
+    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    if (storedUsers.find((u: User) => u.email === email)) {
-      throw new Error('Email already exists');
-    }
-    
-    if (storedUsers.find((u: User) => u.username === username)) {
-      throw new Error('Username already taken');
-    }
-
-    const newUser: User = {
-      id: crypto.randomUUID(),
+    const newUserData = {
       email,
-      username,
+      username: username.toLowerCase(),
       nickname: username,
-      status: 'online',
-      createdAt: new Date(),
+      createdAt: serverTimestamp(),
     };
 
-    storedUsers.push(newUser);
-    localStorage.setItem('fyrechat_users', JSON.stringify(storedUsers));
-    localStorage.setItem('fyrechat_user', JSON.stringify(newUser));
-    setUser(newUser);
+    await setDoc(doc(db, 'users', userCredential.user.uid), newUserData);
+    
+    // Also create a username lookup entry
+    await setDoc(doc(db, 'usernames', username.toLowerCase()), {
+      odId: userCredential.user.uid,
+    });
+
+    setUser({
+      id: userCredential.user.uid,
+      ...newUser,
+      createdAt: new Date(),
+    });
+    
+    setupPresence(userCredential.user.uid);
   };
 
   const signInWithGoogle = async () => {
-    // Mock Google sign in
-    const mockGoogleUser: User = {
-      id: crypto.randomUUID(),
-      email: 'demo@gmail.com',
-      username: 'demo_user',
-      nickname: 'Demo User',
-      status: 'online',
-      createdAt: new Date(),
-    };
+    const userCredential = await signInWithPopup(auth, googleProvider);
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
     
-    localStorage.setItem('fyrechat_user', JSON.stringify(mockGoogleUser));
-    setUser(mockGoogleUser);
+    if (!userDoc.exists()) {
+      // Create new user profile for Google sign-in
+      const username = userCredential.user.email?.split('@')[0] || `user_${Date.now()}`;
+      const newUser = {
+        email: userCredential.user.email || '',
+        username: username.toLowerCase(),
+        nickname: userCredential.user.displayName || username,
+        avatar: userCredential.user.photoURL || undefined,
+        createdAt: serverTimestamp(),
+      };
+
+      await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
+      await setDoc(doc(db, 'usernames', username.toLowerCase()), {
+        odId: userCredential.user.uid,
+      });
+
+      setUser({
+        id: userCredential.user.uid,
+        ...newUser,
+        createdAt: new Date(),
+      });
+    } else {
+      const userData = userDoc.data();
+      setUser({
+        id: userCredential.user.uid,
+        email: userCredential.user.email || '',
+        username: userData.username,
+        nickname: userData.nickname,
+        avatar: userData.avatar,
+        bio: userData.bio,
+        createdAt: userData.createdAt?.toDate() || new Date(),
+      });
+    }
+    
+    setupPresence(userCredential.user.uid);
   };
 
-  const signOut = () => {
-    if (user) {
-      const updatedUser = { ...user, status: 'offline' as const };
-      const storedUsers = JSON.parse(localStorage.getItem('fyrechat_users') || '[]');
-      const userIndex = storedUsers.findIndex((u: User) => u.id === user.id);
-      if (userIndex >= 0) {
-        storedUsers[userIndex] = updatedUser;
-        localStorage.setItem('fyrechat_users', JSON.stringify(storedUsers));
-      }
+  const signOut = async () => {
+    if (firebaseUser) {
+      // Set offline status before signing out
+      const userStatusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
+      await set(userStatusRef, {
+        state: 'offline',
+        lastChanged: rtdbServerTimestamp(),
+      });
     }
-    localStorage.removeItem('fyrechat_user');
+    
+    await firebaseSignOut(auth);
     setUser(null);
   };
 
-  const updateProfile = (updates: Partial<User>) => {
-    if (user) {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      localStorage.setItem('fyrechat_user', JSON.stringify(updatedUser));
-      
-      const storedUsers = JSON.parse(localStorage.getItem('fyrechat_users') || '[]');
-      const userIndex = storedUsers.findIndex((u: User) => u.id === user.id);
-      if (userIndex >= 0) {
-        storedUsers[userIndex] = updatedUser;
-        localStorage.setItem('fyrechat_users', JSON.stringify(storedUsers));
-      }
-    }
+  const updateProfile = async (updates: Partial<UserProfile>) => {
+    if (!firebaseUser || !user) return;
+    
+    await updateDoc(doc(db, 'users', firebaseUser.uid), updates);
+    setUser({ ...user, ...updates });
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signUp, signInWithGoogle, signOut, updateProfile }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      firebaseUser, 
+      isLoading, 
+      signIn, 
+      signUp, 
+      signInWithGoogle, 
+      signOut, 
+      updateProfile 
+    }}>
       {children}
     </AuthContext.Provider>
   );

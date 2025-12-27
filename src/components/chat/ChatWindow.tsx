@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { ChatItem } from '@/pages/Chat';
+import React, { useState, useEffect, useRef } from 'react';
+import { ChatWithDetails, useMessages, useSendMessage, useTypingIndicator } from '@/hooks/useChat';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +12,6 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
-  MessageSquare,
   Send,
   Smile,
   MoreVertical,
@@ -24,59 +23,61 @@ import {
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 
-interface Message {
-  id: string;
-  senderId: string;
-  senderName: string;
-  content: string;
-  timestamp: Date;
-  status: 'sent' | 'delivered' | 'seen';
-}
-
 interface ChatWindowProps {
-  chat: ChatItem | null;
+  chat: ChatWithDetails | null;
 }
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   const { user } = useAuth();
-  const [message, setMessage] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
+  const { messages, loading } = useMessages(chat?.id || null);
+  const { sendMessage } = useSendMessage();
+  const { typingUsers, setTyping } = useTypingIndicator(chat?.id || null);
+  const [messageInput, setMessageInput] = useState('');
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
-  // Mock messages
-  const [messages] = useState<Message[]>([
-    {
-      id: '1',
-      senderId: 'other',
-      senderName: chat?.name || 'User',
-      content: 'Hey! How are you doing?',
-      timestamp: new Date(Date.now() - 1000 * 60 * 30),
-      status: 'seen',
-    },
-    {
-      id: '2',
-      senderId: user?.id || 'me',
-      senderName: user?.nickname || 'Me',
-      content: "I'm good! Working on a new project. What about you?",
-      timestamp: new Date(Date.now() - 1000 * 60 * 25),
-      status: 'seen',
-    },
-    {
-      id: '3',
-      senderId: 'other',
-      senderName: chat?.name || 'User',
-      content: "That's awesome! I'd love to hear more about it.",
-      timestamp: new Date(Date.now() - 1000 * 60 * 20),
-      status: 'seen',
-    },
-    {
-      id: '4',
-      senderId: user?.id || 'me',
-      senderName: user?.nickname || 'Me',
-      content: "It's a real-time chat application called fyreChat. Pretty cool stuff!",
-      timestamp: new Date(Date.now() - 1000 * 60 * 15),
-      status: 'delivered',
-    },
-  ]);
+  // Scroll to bottom when messages change
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages]);
+
+  // Handle typing indicator
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setMessageInput(e.target.value);
+    
+    // Set typing status
+    setTyping(true);
+    
+    // Clear previous timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Set new timeout to stop typing
+    typingTimeoutRef.current = setTimeout(() => {
+      setTyping(false);
+    }, 2000);
+  };
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!messageInput.trim() || !chat || isSending) return;
+    
+    setIsSending(true);
+    setTyping(false);
+    
+    try {
+      await sendMessage(chat.id, messageInput.trim());
+      setMessageInput('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    } finally {
+      setIsSending(false);
+    }
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -85,14 +86,6 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
       .join('')
       .toUpperCase()
       .slice(0, 2);
-  };
-
-  const handleSend = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!message.trim()) return;
-    // In production, this would send to backend
-    console.log('Sending message:', message);
-    setMessage('');
   };
 
   if (!chat) {
@@ -136,7 +129,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                 ? chat.isOnline
                   ? 'Online'
                   : 'Offline'
-                : `${chat.members?.length || 0} members`}
+                : `${chat.participants?.length || 0} members`}
             </p>
           </div>
         </div>
@@ -167,57 +160,65 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
       </div>
 
       {/* Messages */}
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 p-4" ref={scrollRef}>
         <div className="space-y-4 max-w-3xl mx-auto">
-          {messages.map((msg) => {
-            const isMe = msg.senderId === user?.id || msg.senderId === 'me';
-            return (
-              <div
-                key={msg.id}
-                className={cn('flex gap-3', isMe && 'flex-row-reverse')}
-              >
-                {!isMe && (
-                  <Avatar className="h-8 w-8 flex-shrink-0">
-                    <AvatarFallback className="bg-primary/10 text-primary text-xs">
-                      {getInitials(msg.senderName)}
-                    </AvatarFallback>
-                  </Avatar>
-                )}
+          {loading ? (
+            <div className="text-center py-8 text-muted-foreground">Loading messages...</div>
+          ) : messages.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No messages yet. Start the conversation!
+            </div>
+          ) : (
+            messages.map((msg) => {
+              const isMe = msg.senderId === user?.id;
+              return (
                 <div
-                  className={cn(
-                    'max-w-[70%] rounded-2xl px-4 py-2',
-                    isMe
-                      ? 'bg-primary text-primary-foreground rounded-br-md'
-                      : 'bg-accent rounded-bl-md'
-                  )}
+                  key={msg.id}
+                  className={cn('flex gap-3', isMe && 'flex-row-reverse')}
                 >
-                  {chat.type === 'group' && !isMe && (
-                    <p className="text-xs font-medium mb-1 opacity-70">
-                      {msg.senderName}
-                    </p>
+                  {!isMe && (
+                    <Avatar className="h-8 w-8 flex-shrink-0">
+                      <AvatarFallback className="bg-primary/10 text-primary text-xs">
+                        {getInitials(msg.senderName)}
+                      </AvatarFallback>
+                    </Avatar>
                   )}
-                  <p className="text-sm">{msg.content}</p>
                   <div
                     className={cn(
-                      'flex items-center gap-1 mt-1',
-                      isMe ? 'justify-end' : 'justify-start'
+                      'max-w-[70%] rounded-2xl px-4 py-2',
+                      isMe
+                        ? 'bg-primary text-primary-foreground rounded-br-md'
+                        : 'bg-accent rounded-bl-md'
                     )}
                   >
-                    <span className="text-[10px] opacity-60">
-                      {format(msg.timestamp, 'HH:mm')}
-                    </span>
-                    {isMe && (
-                      <span className="text-[10px] opacity-60">
-                        {msg.status === 'seen' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓'}
-                      </span>
+                    {chat.type === 'group' && !isMe && (
+                      <p className="text-xs font-medium mb-1 opacity-70">
+                        {msg.senderName}
+                      </p>
                     )}
+                    <p className="text-sm">{msg.content}</p>
+                    <div
+                      className={cn(
+                        'flex items-center gap-1 mt-1',
+                        isMe ? 'justify-end' : 'justify-start'
+                      )}
+                    >
+                      <span className="text-[10px] opacity-60">
+                        {format(msg.timestamp, 'HH:mm')}
+                      </span>
+                      {isMe && (
+                        <span className="text-[10px] opacity-60">
+                          {msg.status === 'seen' ? '✓✓' : msg.status === 'delivered' ? '✓✓' : '✓'}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })
+          )}
 
-          {isTyping && (
+          {typingUsers.length > 0 && (
             <div className="flex gap-3">
               <Avatar className="h-8 w-8">
                 <AvatarFallback className="bg-primary/10 text-primary text-xs">
@@ -244,14 +245,15 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
           </Button>
           <Input
             placeholder="Type a message..."
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={messageInput}
+            onChange={handleInputChange}
             className="flex-1 bg-background"
+            disabled={isSending}
           />
           <Button
             type="submit"
             size="icon"
-            disabled={!message.trim()}
+            disabled={!messageInput.trim() || isSending}
             className="bg-primary hover:bg-primary/90"
           >
             <Send className="h-4 w-4" />
