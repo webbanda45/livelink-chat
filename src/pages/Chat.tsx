@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Navigate } from 'react-router-dom';
 import ChatSidebar from '@/components/chat/ChatSidebar';
@@ -11,24 +11,53 @@ import { Sheet, SheetContent } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Menu } from 'lucide-react';
 import { useChats, ChatWithDetails } from '@/hooks/useChat';
+import { useNotifications } from '@/hooks/useNotifications';
 
 const Chat: React.FC = () => {
   const { user, isLoading } = useAuth();
   const { chats, loading: chatsLoading } = useChats();
+  const { playNotificationSound, showBrowserNotification, requestPermission } = useNotifications();
   const [selectedChat, setSelectedChat] = useState<ChatWithDetails | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const prevChatsRef = useRef<ChatWithDetails[]>([]);
 
-  // Update selected chat when chats update
+  // Request notification permission on mount
+  useEffect(() => {
+    requestPermission();
+  }, [requestPermission]);
+
+  // Update selected chat when chats update and detect new messages
   useEffect(() => {
     if (selectedChat) {
       const updated = chats.find(c => c.id === selectedChat.id);
       if (updated) setSelectedChat(updated);
     }
-  }, [chats, selectedChat?.id]);
+
+    // Check for new messages (unread count increased)
+    if (prevChatsRef.current.length > 0 && user) {
+      chats.forEach((chat) => {
+        const prevChat = prevChatsRef.current.find(c => c.id === chat.id);
+        const prevUnread = prevChat?.unreadCount || 0;
+        const currentUnread = chat.unreadCount || 0;
+        
+        // If unread count increased and it's not the selected chat
+        if (currentUnread > prevUnread && selectedChat?.id !== chat.id) {
+          playNotificationSound();
+          showBrowserNotification(
+            `New message from ${chat.name}`,
+            chat.lastMessage || 'You have a new message',
+            chat.avatar
+          );
+        }
+      });
+    }
+    
+    prevChatsRef.current = chats;
+  }, [chats, selectedChat?.id, user, playNotificationSound, showBrowserNotification]);
 
   if (isLoading) {
     return (

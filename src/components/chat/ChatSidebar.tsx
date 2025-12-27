@@ -98,11 +98,18 @@ const ChatSidebar: React.FC<ChatSidebarProps> = ({
       return;
     }
     
-    // Create new DM
+    // Create new DM and wait for it to appear in chats
     try {
       const chatId = await getOrCreateDMChat(user.id, friendId);
-      // The chat will appear in the list automatically via subscription
       setSearchQuery('');
+      
+      // Wait a bit for the subscription to update, then select the new chat
+      setTimeout(() => {
+        const newChat = chats.find((c) => c.id === chatId);
+        if (newChat) {
+          onSelectChat(newChat);
+        }
+      }, 500);
     } catch (error) {
       console.error('Failed to create DM:', error);
     }

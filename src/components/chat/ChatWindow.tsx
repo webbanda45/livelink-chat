@@ -9,8 +9,19 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import {
   Send,
   Smile,
@@ -19,13 +30,18 @@ import {
   Video,
   Users,
   Flame,
+  Trash2,
+  VolumeX,
+  Search,
+  UserX,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import OnlineStatusBadge from './OnlineStatusBadge';
 import UserProfileCard from './UserProfileCard';
-import { getUserById } from '@/services/chatService';
+import { getUserById, clearChat, clearUnreadCount } from '@/services/chatService';
 import { UserProfile } from '@/types/chat';
+import { toast } from '@/hooks/use-toast';
 
 interface ChatWindowProps {
   chat: ChatWithDetails | null;
@@ -40,6 +56,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   const [isSending, setIsSending] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
+  const [clearChatOpen, setClearChatOpen] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -50,12 +68,42 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   
   const isOtherUserOnline = usePresence(otherUserId);
 
+  // Clear unread count when viewing a chat
+  useEffect(() => {
+    if (chat?.id && user?.id) {
+      clearUnreadCount(chat.id, user.id);
+    }
+  }, [chat?.id, user?.id]);
+
   // Scroll to bottom when messages change
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+
+  const handleClearChat = async () => {
+    if (!chat) return;
+    
+    setIsClearing(true);
+    try {
+      await clearChat(chat.id);
+      toast({
+        title: 'Chat cleared',
+        description: 'All messages have been deleted.',
+      });
+    } catch (error) {
+      console.error('Failed to clear chat:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to clear chat.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClearing(false);
+      setClearChatOpen(false);
+    }
+  };
 
   // Handle typing indicator
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -181,9 +229,21 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                   View Profile
                 </DropdownMenuItem>
               )}
-              <DropdownMenuItem>Search Messages</DropdownMenuItem>
-              <DropdownMenuItem>Mute Notifications</DropdownMenuItem>
+              <DropdownMenuItem>
+                <Search className="mr-2 h-4 w-4" />
+                Search Messages
+              </DropdownMenuItem>
+              <DropdownMenuItem>
+                <VolumeX className="mr-2 h-4 w-4" />
+                Mute Notifications
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={() => setClearChatOpen(true)}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Chat
+              </DropdownMenuItem>
               <DropdownMenuItem className="text-destructive">
+                <UserX className="mr-2 h-4 w-4" />
                 {chat.type === 'dm' ? 'Block User' : 'Leave Group'}
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -306,6 +366,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
         user={profileUser}
         showEmail={false}
       />
+
+      {/* Clear Chat Confirmation */}
+      <AlertDialog open={clearChatOpen} onOpenChange={setClearChatOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Clear Chat</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to clear all messages in this chat? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleClearChat}
+              disabled={isClearing}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isClearing ? 'Clearing...' : 'Clear Chat'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

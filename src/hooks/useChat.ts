@@ -34,6 +34,8 @@ export const useChats = () => {
 
     const unsubscribe = subscribeToChats(user.id, (rawChats) => {
       const processedChats: ChatWithDetails[] = rawChats.map((chat) => {
+        const unreadCount = (chat as any).unreadCounts?.[user.id] || 0;
+        
         if (chat.type === 'dm') {
           const otherUserId = chat.participants.find((p) => p !== user.id);
           const otherUser = otherUserId ? chat.participantDetails?.[otherUserId] : null;
@@ -41,11 +43,13 @@ export const useChats = () => {
             ...chat,
             name: otherUser?.nickname || 'Unknown User',
             avatar: otherUser?.avatar,
+            unreadCount,
           };
         }
         return {
           ...chat,
           name: (chat as any).name || 'Group',
+          unreadCount,
         };
       });
       setChats(processedChats);
