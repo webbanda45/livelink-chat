@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   Timestamp,
   limit,
+  increment,
 } from 'firebase/firestore';
 import { ref, onValue, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import { db, rtdb } from '@/lib/firebase';
@@ -272,25 +273,27 @@ export const sendMessage = async (
     status: 'sent',
   });
 
-  // Update chat's last message and increment unread count for other participants
-  const chatDoc = await getDoc(doc(db, 'chats', chatId));
+  // Update chat's last message + increment unread counts (atomically) for other participants
+  const chatRef = doc(db, 'chats', chatId);
+  const chatDoc = await getDoc(chatRef);
+
   if (chatDoc.exists()) {
     const chatData = chatDoc.data();
-    const unreadCounts = chatData.unreadCounts || {};
-    
-    // Increment unread count for all participants except sender
-    chatData.participants.forEach((participantId: string) => {
-      if (participantId !== senderId) {
-        unreadCounts[participantId] = (unreadCounts[participantId] || 0) + 1;
-      }
-    });
+    const participants: string[] = chatData.participants || [];
 
-    await updateDoc(doc(db, 'chats', chatId), {
+    const updates: Record<string, any> = {
       lastMessage: content,
       lastMessageTime: serverTimestamp(),
       lastMessageSenderId: senderId,
-      unreadCounts,
+    };
+
+    participants.forEach((participantId) => {
+      if (participantId !== senderId) {
+        updates[`unreadCounts.${participantId}`] = increment(1);
+      }
     });
+
+    await updateDoc(chatRef, updates);
   }
 
   return messageRef.id;
@@ -298,13 +301,7 @@ export const sendMessage = async (
 
 export const clearUnreadCount = async (chatId: string, userId: string) => {
   const chatRef = doc(db, 'chats', chatId);
-  const chatDoc = await getDoc(chatRef);
-  
-  if (chatDoc.exists()) {
-    const unreadCounts = chatDoc.data().unreadCounts || {};
-    unreadCounts[userId] = 0;
-    await updateDoc(chatRef, { unreadCounts });
-  }
+  await updateDoc(chatRef, { [`unreadCounts.${userId}`]: 0 });
 };
 
 export const clearChat = async (chatId: string) => {
@@ -357,11 +354,11 @@ export const createGroup = async (
 ) => {
   const allMembers = [adminId, ...memberIds.filter((id) => id !== adminId)];
   
-  const memberDetails: Record<string, { nickname: string; avatar?: string }> = {};
+  const memberDetails: Record<string, { nickname: string; avatar: string | null }> = {};
   for (const memberId of allMembers) {
     const user = await getUserById(memberId);
     if (user) {
-      memberDetails[memberId] = { nickname: user.nickname, avatar: user.avatar };
+      memberDetails[memberId] = { nickname: user.nickname, avatar: user.avatar || null };
     }
   }
 
@@ -391,7 +388,7 @@ export const addGroupMember = async (chatId: string, userId: string) => {
   const participants = [...chatData.participants, userId];
   const participantDetails = {
     ...chatData.participantDetails,
-    [userId]: { nickname: user.nickname, avatar: user.avatar },
+    [userId]: { nickname: user.nickname, avatar: user.avatar || null },
   };
 
   await updateDoc(chatRef, { participants, participantDetails });
