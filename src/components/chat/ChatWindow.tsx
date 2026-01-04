@@ -39,15 +39,17 @@ import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import OnlineStatusBadge from './OnlineStatusBadge';
 import UserProfileCard from './UserProfileCard';
-import { getUserById, clearChat, clearUnreadCount } from '@/services/chatService';
+import { getUserById, clearChat, clearUnreadCount, leaveGroup } from '@/services/chatService';
 import { UserProfile } from '@/types/chat';
 import { toast } from '@/hooks/use-toast';
+import { useNavigate } from 'react-router-dom';
 
 interface ChatWindowProps {
   chat: ChatWithDetails | null;
+  onChatLeft?: () => void;
 }
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ chat, onChatLeft }) => {
   const { user } = useAuth();
   const { messages, loading } = useMessages(chat?.id || null);
   const { sendMessage } = useSendMessage();
@@ -58,6 +60,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
   const [profileUser, setProfileUser] = useState<UserProfile | null>(null);
   const [clearChatOpen, setClearChatOpen] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
+  const [leaveGroupOpen, setLeaveGroupOpen] = useState(false);
+  const [isLeaving, setIsLeaving] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout>();
 
@@ -110,6 +114,30 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
     } finally {
       setIsClearing(false);
       setClearChatOpen(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!chat || !user) return;
+    
+    setIsLeaving(true);
+    try {
+      await leaveGroup(chat.id, user.id);
+      toast({
+        title: 'Left group',
+        description: `You have left "${chat.name}".`,
+      });
+      onChatLeft?.();
+    } catch (error) {
+      console.error('Failed to leave group:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to leave group.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLeaving(false);
+      setLeaveGroupOpen(false);
     }
   };
 
@@ -250,10 +278,20 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
                 <Trash2 className="mr-2 h-4 w-4" />
                 Clear Chat
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">
-                <UserX className="mr-2 h-4 w-4" />
-                {chat.type === 'dm' ? 'Block User' : 'Leave Group'}
-              </DropdownMenuItem>
+              {chat.type === 'group' ? (
+                <DropdownMenuItem 
+                  className="text-destructive"
+                  onClick={() => setLeaveGroupOpen(true)}
+                >
+                  <UserX className="mr-2 h-4 w-4" />
+                  Leave Group
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem className="text-destructive">
+                  <UserX className="mr-2 h-4 w-4" />
+                  Block User
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -392,6 +430,28 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat }) => {
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isClearing ? 'Clearing...' : 'Clear Chat'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Leave Group Confirmation */}
+      <AlertDialog open={leaveGroupOpen} onOpenChange={setLeaveGroupOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Leave Group</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to leave "{chat?.name}"? You will no longer receive messages from this group.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLeaving}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleLeaveGroup}
+              disabled={isLeaving}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isLeaving ? 'Leaving...' : 'Leave Group'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

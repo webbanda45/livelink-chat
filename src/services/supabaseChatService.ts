@@ -583,6 +583,10 @@ export const removeGroupMember = async (chatId: string, userId: string): Promise
     .eq('user_id', userId);
 };
 
+export const leaveGroup = async (chatId: string, userId: string): Promise<void> => {
+  await removeGroupMember(chatId, userId);
+};
+
 // ============ Presence Services ============
 export const setUserPresence = async (userId: string, isOnline: boolean): Promise<void> => {
   await supabase
