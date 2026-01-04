@@ -42,7 +42,6 @@ import UserProfileCard from './UserProfileCard';
 import { getUserById, clearChat, clearUnreadCount, leaveGroup } from '@/services/chatService';
 import { UserProfile } from '@/types/chat';
 import { toast } from '@/hooks/use-toast';
-import { useNavigate } from 'react-router-dom';
 
 interface ChatWindowProps {
   chat: ChatWithDetails | null;
