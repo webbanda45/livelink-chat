@@ -17,6 +17,7 @@ export {
   createGroup,
   addGroupMember,
   removeGroupMember,
+  leaveGroup,
   subscribeToUserPresence,
   setTypingStatus,
   subscribeToTypingStatus,

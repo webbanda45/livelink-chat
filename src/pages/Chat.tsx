@@ -157,7 +157,7 @@ const Chat: React.FC = () => {
           </span>
         </div>
 
-        <ChatWindow chat={selectedChat} />
+        <ChatWindow chat={selectedChat} onChatLeft={() => setSelectedChat(null)} />
       </div>
 
       {/* Dialogs */}
