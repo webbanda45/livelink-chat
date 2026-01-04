@@ -17,6 +17,7 @@ import {
 import { ref, set, onDisconnect, onValue, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
 import { auth, db, rtdb, googleProvider } from '@/lib/firebase';
 import { UserProfile } from '@/types/chat';
+import { syncProfileToSupabase, setUserPresence } from '@/services/supabaseChatService';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -48,8 +49,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Set up presence system
-  const setupPresence = (uid: string) => {
+  // Set up presence system (Firebase RTDB + Supabase)
+  const setupPresence = async (uid: string) => {
+    // Firebase presence
     const userStatusRef = ref(rtdb, `/status/${uid}`);
     const connectedRef = ref(rtdb, '.info/connected');
 
@@ -68,6 +70,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         });
       }
     });
+
+    // Supabase presence
+    await setUserPresence(uid, true);
   };
 
   useEffect(() => {
@@ -88,6 +93,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
               bio: userData.bio,
               createdAt: userData.createdAt?.toDate() || new Date(),
             });
+            
+            // Sync to Supabase
+            await syncProfileToSupabase(
+              firebaseUser.uid,
+              userData.username,
+              userData.nickname,
+              userData.avatar
+            );
+            
             setupPresence(firebaseUser.uid);
           }
         } catch (error) {
@@ -118,6 +132,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         bio: userData.bio,
         createdAt: userData.createdAt?.toDate() || new Date(),
       });
+      
+      // Sync to Supabase
+      await syncProfileToSupabase(
+        userCredential.user.uid,
+        userData.username,
+        userData.nickname,
+        userData.avatar
+      );
+      
       setupPresence(userCredential.user.uid);
     }
   };
@@ -139,6 +162,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       await setDoc(doc(db, 'usernames', username.toLowerCase()), {
         odId: userCredential.user.uid,
       });
+
+      // Sync to Supabase
+      await syncProfileToSupabase(
+        userCredential.user.uid,
+        username.toLowerCase(),
+        username
+      );
 
       setUser({
         id: userCredential.user.uid,
@@ -187,6 +217,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         odId: userCredential.user.uid,
       });
 
+      // Sync to Supabase
+      await syncProfileToSupabase(
+        userCredential.user.uid,
+        username.toLowerCase(),
+        userCredential.user.displayName || username,
+        userCredential.user.photoURL || undefined
+      );
+
       setUser({
         id: userCredential.user.uid,
         ...newUser,
@@ -203,6 +241,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         bio: userData.bio,
         createdAt: userData.createdAt?.toDate() || new Date(),
       });
+
+      // Sync to Supabase
+      await syncProfileToSupabase(
+        userCredential.user.uid,
+        userData.username,
+        userData.nickname,
+        userData.avatar
+      );
     }
     
     setupPresence(userCredential.user.uid);
@@ -211,12 +257,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async () => {
     try {
       if (firebaseUser) {
-        // Set offline status before signing out
+        // Set offline status before signing out (Firebase)
         const userStatusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
         await set(userStatusRef, {
           state: 'offline',
           lastChanged: rtdbServerTimestamp(),
         });
+        
+        // Set offline status in Supabase
+        await setUserPresence(firebaseUser.uid, false);
       }
     } catch (error) {
       console.error('Error setting offline status:', error);

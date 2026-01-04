@@ -10,6 +10,7 @@ import {
   subscribeToUserPresence,
   setTypingStatus,
   subscribeToTypingStatus,
+  clearUnreadCount as clearUnreadCountService,
 } from '@/services/chatService';
 import { Chat, Message, FriendRequest } from '@/types/chat';
 
