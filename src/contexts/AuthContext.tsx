@@ -57,7 +57,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (firebaseUser) {
         try {
           // Fetch profile from Lovable Cloud (Supabase)
-          const profile = await getProfileByFirebaseUid(firebaseUser.uid);
+          let profile = await getProfileByFirebaseUid(firebaseUser.uid);
+          
+          if (!profile) {
+            // Profile doesn't exist - create one from Firebase user data
+            const username = firebaseUser.email?.split('@')[0] || `user_${Date.now()}`;
+            await syncProfileToSupabase(
+              firebaseUser.uid,
+              username.toLowerCase(),
+              firebaseUser.displayName || username,
+              firebaseUser.photoURL || undefined
+            );
+            profile = await getProfileByFirebaseUid(firebaseUser.uid);
+          }
+          
           if (profile) {
             setUser({
               ...profile,
@@ -82,7 +95,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     
     // Fetch profile from Lovable Cloud
-    const profile = await getProfileByFirebaseUid(userCredential.user.uid);
+    let profile = await getProfileByFirebaseUid(userCredential.user.uid);
+    
+    if (!profile) {
+      // Create profile if it doesn't exist
+      const username = email.split('@')[0] || `user_${Date.now()}`;
+      await syncProfileToSupabase(
+        userCredential.user.uid,
+        username.toLowerCase(),
+        username
+      );
+      profile = await getProfileByFirebaseUid(userCredential.user.uid);
+    }
+    
     if (profile) {
       setUser({
         ...profile,

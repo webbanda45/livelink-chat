@@ -144,18 +144,28 @@ export const getUserById = async (userId: string): Promise<UserProfile | null> =
 
 // ============ Friend Request Services ============
 export const sendFriendRequest = async (senderId: string, receiverId: string): Promise<void> => {
+  // Check if sender profile exists
   const sender = await getUserById(senderId);
-  if (!sender) throw new Error('Sender not found');
+  if (!sender) {
+    console.error('Sender profile not found for ID:', senderId);
+    throw new Error('Your profile is not set up. Please sign out and sign in again.');
+  }
 
-  // Check if request already exists
+  // Check if receiver exists
+  const receiver = await getUserById(receiverId);
+  if (!receiver) {
+    throw new Error('User not found');
+  }
+
+  // Check if request already exists (both directions)
   const { data: existing } = await supabase
     .from('friend_requests')
     .select('id')
-    .eq('sender_id', senderId)
-    .eq('receiver_id', receiverId)
+    .or(`and(sender_id.eq.${senderId},receiver_id.eq.${receiverId}),and(sender_id.eq.${receiverId},receiver_id.eq.${senderId})`)
+    .eq('status', 'pending')
     .maybeSingle();
 
-  if (existing) throw new Error('Request already sent');
+  if (existing) throw new Error('Friend request already exists');
 
   // Check if already friends
   const { data: friendCheck } = await supabase
