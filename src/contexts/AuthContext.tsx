@@ -7,17 +7,13 @@ import {
   signOut as firebaseSignOut,
   onAuthStateChanged,
 } from 'firebase/auth';
-import {
-  doc,
-  setDoc,
-  getDoc,
-  updateDoc,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { ref, set, onDisconnect, onValue, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
-import { auth, db, rtdb, googleProvider } from '@/lib/firebase';
+import { auth, googleProvider } from '@/lib/firebase';
 import { UserProfile } from '@/types/chat';
-import { syncProfileToSupabase, setUserPresence } from '@/services/supabaseChatService';
+import { 
+  syncProfileToSupabase, 
+  setUserPresence, 
+  getProfileByFirebaseUid 
+} from '@/services/supabaseChatService';
 
 interface AuthContextType {
   user: UserProfile | null;
@@ -49,29 +45,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Set up presence system (Firebase RTDB + Supabase)
+  // Set up presence system (Lovable Cloud only)
   const setupPresence = async (uid: string) => {
-    // Firebase presence
-    const userStatusRef = ref(rtdb, `/status/${uid}`);
-    const connectedRef = ref(rtdb, '.info/connected');
-
-    onValue(connectedRef, (snapshot) => {
-      if (snapshot.val() === true) {
-        // User is online
-        set(userStatusRef, {
-          state: 'online',
-          lastChanged: rtdbServerTimestamp(),
-        });
-
-        // Set offline status on disconnect
-        onDisconnect(userStatusRef).set({
-          state: 'offline',
-          lastChanged: rtdbServerTimestamp(),
-        });
-      }
-    });
-
-    // Supabase presence
     await setUserPresence(uid, true);
   };
 
@@ -81,27 +56,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       if (firebaseUser) {
         try {
-          const userDoc = await getDoc(doc(db, 'users', firebaseUser.uid));
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
+          // Fetch profile from Lovable Cloud (Supabase)
+          const profile = await getProfileByFirebaseUid(firebaseUser.uid);
+          if (profile) {
             setUser({
-              id: firebaseUser.uid,
+              ...profile,
               email: firebaseUser.email || '',
-              username: userData.username,
-              nickname: userData.nickname,
-              avatar: userData.avatar,
-              bio: userData.bio,
-              createdAt: userData.createdAt?.toDate() || new Date(),
             });
-            
-            // Sync to Supabase
-            await syncProfileToSupabase(
-              firebaseUser.uid,
-              userData.username,
-              userData.nickname,
-              userData.avatar
-            );
-            
             setupPresence(firebaseUser.uid);
           }
         } catch (error) {
@@ -119,28 +80,14 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signIn = async (email: string, password: string) => {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
     
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
+    // Fetch profile from Lovable Cloud
+    const profile = await getProfileByFirebaseUid(userCredential.user.uid);
+    if (profile) {
       setUser({
-        id: userCredential.user.uid,
+        ...profile,
         email: userCredential.user.email || '',
-        username: userData.username,
-        nickname: userData.nickname,
-        avatar: userData.avatar,
-        bio: userData.bio,
-        createdAt: userData.createdAt?.toDate() || new Date(),
       });
-      
-      // Sync to Supabase
-      await syncProfileToSupabase(
-        userCredential.user.uid,
-        userData.username,
-        userData.nickname,
-        userData.avatar
-      );
-      
       setupPresence(userCredential.user.uid);
     }
   };
@@ -148,76 +95,34 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signUp = async (email: string, password: string, username: string) => {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     
-    try {
-      const newUserData = {
-        email,
-        username: username.toLowerCase(),
-        nickname: username,
-        createdAt: serverTimestamp(),
-      };
+    // Create profile in Lovable Cloud
+    await syncProfileToSupabase(
+      userCredential.user.uid,
+      username.toLowerCase(),
+      username
+    );
 
-      await setDoc(doc(db, 'users', userCredential.user.uid), newUserData);
-      
-      // Also create a username lookup entry
-      await setDoc(doc(db, 'usernames', username.toLowerCase()), {
-        odId: userCredential.user.uid,
-      });
-
-      // Sync to Supabase
-      await syncProfileToSupabase(
-        userCredential.user.uid,
-        username.toLowerCase(),
-        username
-      );
-
-      setUser({
-        id: userCredential.user.uid,
-        email,
-        username: username.toLowerCase(),
-        nickname: username,
-        createdAt: new Date(),
-      });
-      
-      try {
-        setupPresence(userCredential.user.uid);
-      } catch (presenceError) {
-        console.error('Presence setup failed:', presenceError);
-      }
-    } catch (firestoreError) {
-      console.error('Firestore write failed:', firestoreError);
-      // Still set user since auth succeeded - profile will be created on next sign in
-      setUser({
-        id: userCredential.user.uid,
-        email,
-        username: username.toLowerCase(),
-        nickname: username,
-        createdAt: new Date(),
-      });
-      throw new Error('Account created but profile setup failed. Please check Firestore rules.');
-    }
+    setUser({
+      id: userCredential.user.uid,
+      email,
+      username: username.toLowerCase(),
+      nickname: username,
+      createdAt: new Date(),
+    });
+    
+    setupPresence(userCredential.user.uid);
   };
 
   const signInWithGoogle = async () => {
     const userCredential = await signInWithPopup(auth, googleProvider);
-    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
     
-    if (!userDoc.exists()) {
-      // Create new user profile for Google sign-in
+    // Check if profile exists in Lovable Cloud
+    let profile = await getProfileByFirebaseUid(userCredential.user.uid);
+    
+    if (!profile) {
+      // Create new user profile for Google sign-in in Lovable Cloud
       const username = userCredential.user.email?.split('@')[0] || `user_${Date.now()}`;
-      const newUser = {
-        email: userCredential.user.email || '',
-        username: username.toLowerCase(),
-        nickname: userCredential.user.displayName || username,
-        avatar: userCredential.user.photoURL || undefined,
-        createdAt: serverTimestamp(),
-      };
-
-      await setDoc(doc(db, 'users', userCredential.user.uid), newUser);
-      await setDoc(doc(db, 'usernames', username.toLowerCase()), {
-        odId: userCredential.user.uid,
-      });
-
-      // Sync to Supabase
+      
       await syncProfileToSupabase(
         userCredential.user.uid,
         username.toLowerCase(),
@@ -227,28 +132,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       setUser({
         id: userCredential.user.uid,
-        ...newUser,
+        email: userCredential.user.email || '',
+        username: username.toLowerCase(),
+        nickname: userCredential.user.displayName || username,
+        avatar: userCredential.user.photoURL || undefined,
         createdAt: new Date(),
       });
     } else {
-      const userData = userDoc.data();
       setUser({
-        id: userCredential.user.uid,
+        ...profile,
         email: userCredential.user.email || '',
-        username: userData.username,
-        nickname: userData.nickname,
-        avatar: userData.avatar,
-        bio: userData.bio,
-        createdAt: userData.createdAt?.toDate() || new Date(),
       });
-
-      // Sync to Supabase
-      await syncProfileToSupabase(
-        userCredential.user.uid,
-        userData.username,
-        userData.nickname,
-        userData.avatar
-      );
     }
     
     setupPresence(userCredential.user.uid);
@@ -257,14 +151,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async () => {
     try {
       if (firebaseUser) {
-        // Set offline status before signing out (Firebase)
-        const userStatusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
-        await set(userStatusRef, {
-          state: 'offline',
-          lastChanged: rtdbServerTimestamp(),
-        });
-        
-        // Set offline status in Supabase
+        // Set offline status in Lovable Cloud
         await setUserPresence(firebaseUser.uid, false);
       }
     } catch (error) {
@@ -278,7 +165,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!firebaseUser || !user) return;
     
-    await updateDoc(doc(db, 'users', firebaseUser.uid), updates);
+    // Update profile in Lovable Cloud
+    await syncProfileToSupabase(
+      firebaseUser.uid,
+      updates.username || user.username,
+      updates.nickname || user.nickname,
+      updates.avatar || user.avatar
+    );
     setUser({ ...user, ...updates });
   };
 

@@ -1,7 +1,5 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getDatabase } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyC0iC7vvpqB-X3mbI7dk59ITjyYvvNd-7U",
@@ -11,16 +9,13 @@ const firebaseConfig = {
   messagingSenderId: "1074485985118",
   appId: "1:1074485985118:web:674bbbc06baf659c9a99cf",
   measurementId: "G-KNW0Z08VVY",
-  databaseURL: "https://fyrechat-12c6b-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
-// Initialize Firebase
+// Initialize Firebase (Auth only)
 const app = initializeApp(firebaseConfig);
 
-// Initialize services
+// Initialize Auth service only
 export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const rtdb = getDatabase(app);
 export const googleProvider = new GoogleAuthProvider();
 
 export default app;
