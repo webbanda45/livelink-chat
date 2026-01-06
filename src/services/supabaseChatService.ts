@@ -9,17 +9,54 @@ export const syncProfileToSupabase = async (
   nickname: string,
   avatar?: string
 ): Promise<void> => {
-  const { error } = await supabase
+  // Check if profile already exists for this firebase_uid
+  const { data: existingProfile } = await supabase
     .from('profiles')
-    .upsert({
-      firebase_uid: firebaseUid,
-      username: username.toLowerCase(),
-      nickname,
-      avatar: avatar || null,
-    }, { onConflict: 'firebase_uid' });
+    .select('id')
+    .eq('firebase_uid', firebaseUid)
+    .maybeSingle();
 
-  if (error) {
-    console.error('Error syncing profile to Supabase:', error);
+  if (existingProfile) {
+    // Update existing profile
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        nickname,
+        avatar: avatar || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('firebase_uid', firebaseUid);
+
+    if (error) {
+      console.error('Error updating profile in Supabase:', error);
+    }
+  } else {
+    // Check if username is taken
+    let finalUsername = username.toLowerCase();
+    const { data: existingUsername } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('username', finalUsername)
+      .maybeSingle();
+
+    if (existingUsername) {
+      // Username taken, append random suffix
+      finalUsername = `${finalUsername}_${Date.now().toString(36)}`;
+    }
+
+    // Insert new profile
+    const { error } = await supabase
+      .from('profiles')
+      .insert({
+        firebase_uid: firebaseUid,
+        username: finalUsername,
+        nickname,
+        avatar: avatar || null,
+      });
+
+    if (error) {
+      console.error('Error inserting profile to Supabase:', error);
+    }
   }
 };
 
